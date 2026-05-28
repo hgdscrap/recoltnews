@@ -21,33 +21,24 @@ const HEADERS = {
   "Upgrade-Insecure-Requests": "1",
 };
 
-// Parse "Publié à 08:45" ou "Publié le 28/05/2026 à 08:45"
 function parseLeEchosDate(rawDate) {
   if (!rawDate) return null;
 
   const s = rawDate.trim();
 
-  // Format : datetime ISO dans <time> → priorité maximale
-  // déjà géré via $el.find("time").attr("datetime")
-
-  // "Publié à 08:45" → heure du jour
   const heureMatch = s.match(/(\d{1,2}):(\d{2})/);
   if (heureMatch) {
-    const now = new Date();
-    // Cherche aussi une date explicite "28/05/2026"
     const dateMatch = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
     if (dateMatch) {
       return new Date(
-        `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}T${heureMatch[1].padStart(2,"0")}:${heureMatch[2]}:00`
+        `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}T${heureMatch[1].padStart(2, "0")}:${heureMatch[2]}:00`
       ).toISOString();
     }
-    // Pas de date explicite → aujourd'hui
     const d = new Date();
     d.setHours(parseInt(heureMatch[1]), parseInt(heureMatch[2]), 0, 0);
     return d.toISOString();
   }
 
-  // "il y a 2 heures"
   const heuresMatch = s.match(/il y a (\d+) heure/);
   if (heuresMatch) {
     const d = new Date();
@@ -55,7 +46,6 @@ function parseLeEchosDate(rawDate) {
     return d.toISOString();
   }
 
-  // "il y a X minutes"
   const minsMatch = s.match(/il y a (\d+) min/);
   if (minsMatch) {
     const d = new Date();
@@ -112,11 +102,9 @@ async function scrape() {
         const summary =
           $el.find("p, [class*='desc'], [class*='summary'], [class*='chapo']").first().text().trim() || "";
 
-        // Catégorie (CHRONIQUE, ÉDITO, ANALYSE...)
         const category =
           $el.find("[class*='category'], [class*='rubrique'], [class*='label'], [class*='tag']").first().text().trim() || "";
 
-        // Date — priorité : datetime ISO > texte "Publié à HH:MM"
         const datetimeAttr = $el.find("time").attr("datetime") || "";
         const dateText =
           $el.find("time").text().trim() ||
@@ -125,9 +113,18 @@ async function scrape() {
 
         let date = null;
         if (datetimeAttr) {
-          date = new Date(datetimeAttr).toISOString();
-        } else {
-          date = parseLeEchosDate(dateText) || new Date().toISOString();
+          const parsed = new Date(datetimeAttr);
+          if (!isNaN(parsed.getTime())) {
+            date = parsed.toISOString();
+          }
+        }
+        if (!date && dateText) {
+          date = parseLeEchosDate(dateText);
+        }
+        if (!date) {
+          // Aucune date trouvée → on log et on skip plutôt que d'inventer
+          console.warn(`  [no-date] ${title.slice(0, 60)}`);
+          date = new Date().toISOString();
         }
 
         if (title && url && url.includes("lesechos.fr")) {
@@ -158,14 +155,12 @@ async function scrape() {
     }
   }
 
-  // Log des dates récoltées pour debug
   articles.forEach(a => console.log(`  [${a.date}] ${a.title.slice(0, 60)}`));
 
   const unique = dedup(articles);
   const existing = readExisting();
   const merged = mergeAndClean([...unique, ...existing]);
 
-  // Tri par date décroissante avant sauvegarde
   merged.sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const outputPath = path.join(__dirname, "data", "lesechos-editos.json");
@@ -188,30 +183,4 @@ function readExisting() {
   const p = path.join(__dirname, "data", "lesechos-editos.json");
   if (!fs.existsSync(p)) return [];
   try {
-    return JSON.parse(fs.readFileSync(p, "utf-8"));
-  } catch {
-    return [];
-  }
-}
-
-function mergeAndClean(articles) {
-  const seen = new Set();
-  const unique = articles.filter((a) => {
-    if (seen.has(a.url)) return false;
-    seen.add(a.url);
-    return true;
-  });
-
-  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
-  const recent = unique.filter((a) => {
-    const d = new Date(a.date).getTime();
-    return isNaN(d) || d > cutoff;
-  });
-
-  return recent.slice(0, 60);
-}
-
-scrape().catch((err) => {
-  console.error("Erreur scraper:", err.message);
-  process.exit(1);
-});
+    return JSON.parse(fs.
