@@ -1,0 +1,13 @@
+{
+  "name": "lesechos-editos-scraper",
+  "version": "1.0.0",
+  "description": "Scraper Les Échos Éditos & Analyses — GitHub Actions cron",
+  "main": "scraper.js",
+  "scripts": {
+    "scrape": "node scraper.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0"
+  }
+}
